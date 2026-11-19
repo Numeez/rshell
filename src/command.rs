@@ -1,7 +1,6 @@
-use std::{
-    ffi::{CString, NulError, c_char},
-    ptr,
-};
+use std::ffi::{CString, NulError, c_char, c_int};
+
+use crate::ffi::{_exit, execvp, fork, waitpid};
 
 #[derive(Debug, PartialEq)]
 pub enum Command<'a> {
@@ -86,10 +85,24 @@ fn execute_external_command(cmd: Vec<&str>) -> Status {
     match c_strings {
         Ok(val) => {
             let c_pointers = to_argv(&val);
+            let pid = unsafe { fork() };
+            if pid == 0 {
+                let exec_result = unsafe { execvp(c_pointers[0], c_pointers.as_ptr()) };
+                if exec_result == -1 {
+                    eprintln!("rsh: {}: {}", cmd[0], std::io::Error::last_os_error());
+                }
+                unsafe { _exit(1) };
+            } else if pid > 0 {
+                let mut result: c_int = 0;
+                if unsafe { waitpid(pid, &mut result, 0) } == -1 {
+                    eprintln!("rsh: waitpid: {}", std::io::Error::last_os_error());
+                }
+            } else {
+                eprintln!("rsh: fork: {}", std::io::Error::last_os_error());
+            }
         }
         Err(e) => {
             eprintln!("rsh: {}", e);
-            return Status::Continue;
         }
     }
 

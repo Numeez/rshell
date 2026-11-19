@@ -18,6 +18,9 @@ unsafe extern "C" {
 unsafe extern "C" {
     pub fn execvp(file: *const c_char, argv: *const *const c_char) -> c_int;
 }
+unsafe extern "C" {
+    pub fn _exit(status: i32) -> !;
+}
 
 #[cfg(test)]
 mod tests {
