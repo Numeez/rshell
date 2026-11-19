@@ -2,13 +2,13 @@ mod command;
 
 use std::io::{self, Write, stdout};
 
-use crate::command::{Command, parse_command};
+use crate::command::{Status, execute, parse_command};
 
 fn main() {
-    let mut line = String::new();
     loop {
         print!("> ");
         let _ = stdout().flush();
+        let mut line = String::new();
         match io::stdin().read_line(&mut line) {
             Ok(n) => {
                 if n == 0 {
@@ -17,27 +17,21 @@ fn main() {
                 }
                 let values = split_words(&line);
                 if let Some(cmd) = parse_command(values) {
-                    match cmd {
-                        Command::Exit => break,
-                        Command::Invalid => eprintln!("Invalid command"),
+                    match execute(cmd) {
+                        Status::Stop => break,
+                        Status::Continue => {}
                     }
-                } else {
-                    line = String::new();
-                    continue;
                 }
             }
             Err(err) => {
                 if err.kind() == std::io::ErrorKind::InvalidData {
                     eprintln!("error: {}", err.to_string());
-                    line = String::new();
-                    continue;
                 } else {
                     eprintln!("error: {}", err.to_string());
                     std::process::exit(1);
                 }
             }
         }
-        line = String::new();
     }
     std::process::exit(0);
 }
