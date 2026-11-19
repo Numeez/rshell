@@ -1,9 +1,9 @@
 #[derive(Debug, PartialEq)]
-pub enum Command {
+pub enum Command<'a> {
     Exit,
-    Cd(Option<String>),
+    Cd(Option<&'a str>),
     Help,
-    Invalid,
+    External(Vec<&'a str>),
 }
 #[derive(Debug, PartialEq)]
 pub enum Status {
@@ -11,7 +11,7 @@ pub enum Status {
     Continue,
 }
 
-pub fn parse_command(input: Vec<&str>) -> Option<Command> {
+pub fn parse_command(input: Vec<&str>) -> Option<Command<'_>> {
     if input.is_empty() {
         return None;
     }
@@ -23,31 +23,29 @@ pub fn parse_command(input: Vec<&str>) -> Option<Command> {
         "cd" => {
             let target = input.get(1);
             if let Some(val) = target {
-                return Some(Command::Cd(Some(val.to_string())));
+                return Some(Command::Cd(Some(val)));
             } else {
                 Some(Command::Cd(None))
             }
         }
         "help" => Some(Command::Help),
-        _ => Some(Command::Invalid),
+        _ => Some(Command::External(input)),
     }
 }
 
 pub fn execute(cmd: Command) -> Status {
     match cmd {
         Command::Exit => Status::Stop,
-        Command::Invalid => {
-            eprintln!("Invalid command");
-            Status::Continue
-        }
         Command::Cd(target) => execute_cd(target),
         Command::Help => execute_help(),
+        Command::External(val) => execute_external_command(val),
     }
 }
-fn execute_cd(target: Option<String>) -> Status {
+fn execute_cd(target: Option<&str>) -> Status {
     if let Some(val) = target {
         if let Err(err) = std::env::set_current_dir(val) {
             eprintln!("Error occured while cd: {}", err);
+            return Status::Continue;
         }
         match std::env::current_dir() {
             Ok(val) => {
@@ -78,6 +76,11 @@ fn execute_help() -> Status {
     Status::Continue
 }
 
+fn execute_external_command(cmd: Vec<&str>) -> Status {
+    println!("{:?}", cmd);
+    Status::Continue
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -93,11 +96,6 @@ mod tests {
     }
 
     #[test]
-    fn other_commands_are_not_exit() {
-        assert_eq!(parse_command(vec!["ls", "-la"]), Some(Command::Invalid));
-    }
-
-    #[test]
     fn empty_input_is_none() {
         assert_eq!(parse_command(vec![]), None);
     }
@@ -108,14 +106,14 @@ mod tests {
     #[test]
     fn test_cd_command_with_args() {
         assert_eq!(
-            Command::Cd(Some("/tmp".to_string())),
+            Command::Cd(Some("/tmp")),
             parse_command(vec!["cd", "/tmp"]).unwrap()
         )
     }
     #[test]
     fn test_cd_command_with_more_than_one_args() {
         assert_eq!(
-            Command::Cd(Some("/tmp".to_string())),
+            Command::Cd(Some("/tmp")),
             parse_command(vec!["cd", "/tmp", "var"]).unwrap()
         )
     }
@@ -127,5 +125,17 @@ mod tests {
     fn test_help_command() {
         assert_eq!(Command::Help, parse_command(vec!["help"]).unwrap());
         assert_eq!(Command::Help, parse_command(vec!["help", "tmp"]).unwrap())
+    }
+
+    #[test]
+    fn test_external_command() {
+        assert_eq!(
+            Command::External(vec!["ls"]),
+            parse_command(vec!["ls"]).unwrap()
+        );
+        assert_eq!(
+            Command::External(vec!["ls","-la"]),
+            parse_command(vec!["ls","-la"]).unwrap()
+        );
     }
 }
