@@ -1,4 +1,5 @@
 mod command;
+mod ffi;
 
 use std::io::{self, Write, stdout};
 
