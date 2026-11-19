@@ -1,3 +1,8 @@
+use std::{
+    ffi::{CString, NulError, c_char},
+    ptr,
+};
+
 #[derive(Debug, PartialEq)]
 pub enum Command<'a> {
     Exit,
@@ -77,12 +82,40 @@ fn execute_help() -> Status {
 }
 
 fn execute_external_command(cmd: Vec<&str>) -> Status {
-    println!("{:?}", cmd);
+    let c_strings = to_c_strings(&cmd);
+    match c_strings {
+        Ok(val) => {
+            let c_pointers = to_argv(&val);
+        }
+        Err(e) => {
+            eprintln!("rsh: {}", e);
+            return Status::Continue;
+        }
+    }
+
     Status::Continue
 }
 
+fn to_c_strings(words: &[&str]) -> Result<Vec<CString>, NulError> {
+    let mut c_strings = Vec::new();
+    for word in words {
+        c_strings.push(CString::new(*word)?);
+    }
+    Ok(c_strings)
+}
+
+fn to_argv(c_strings: &[CString]) -> Vec<*const c_char> {
+    let mut argv = Vec::new();
+    for c_string in c_strings {
+        argv.push(c_string.as_ptr());
+    }
+    argv.push(std::ptr::null());
+    argv
+}
 #[cfg(test)]
 mod tests {
+    use std::ffi::CStr;
+
     use super::*;
 
     #[test]
@@ -134,8 +167,26 @@ mod tests {
             parse_command(vec!["ls"]).unwrap()
         );
         assert_eq!(
-            Command::External(vec!["ls","-la"]),
-            parse_command(vec!["ls","-la"]).unwrap()
+            Command::External(vec!["ls", "-la"]),
+            parse_command(vec!["ls", "-la"]).unwrap()
         );
+    }
+    #[test]
+    fn builds_null_terminated_argv() {
+        let c_strings = to_c_strings(&["ls", "-la"]).unwrap();
+        let argv = to_argv(&c_strings);
+
+        assert_eq!(argv.len(), 3);
+        assert!(argv[2].is_null());
+
+        let first = unsafe { CStr::from_ptr(argv[0]) };
+        let second = unsafe { CStr::from_ptr(argv[1]) };
+        assert_eq!(first.to_str().unwrap(), "ls");
+        assert_eq!(second.to_str().unwrap(), "-la");
+    }
+
+    #[test]
+    fn rejects_word_with_nul_byte() {
+        assert!(to_c_strings(&["echo", "a\0b"]).is_err());
     }
 }
