@@ -53,7 +53,7 @@ fn execute_cd(target: Option<&str>) -> Status {
             return Status::Continue;
         }
     } else {
-        eprintln!("error: rsh: cd needs an argument");
+        eprintln!("error: cd: needs an argument");
     }
     Status::Continue
 }
@@ -102,7 +102,7 @@ fn execute_external_command(cmd: Vec<&str>) -> Status {
             }
         }
         Err(e) => {
-            eprintln!("error: rsh: {}", e);
+            eprintln!("error: {}", e);
         }
     }
 
