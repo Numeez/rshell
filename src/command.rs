@@ -1,6 +1,9 @@
 use std::ffi::{CString, NulError, c_char, c_int};
 
-use crate::ffi::{_exit, WaitStatus, execvp, fork, get_status, waitpid};
+use crate::{
+    ffi::{_exit, execvp, fork, waitpid},
+    wait::{WaitStatus, get_status},
+};
 
 #[derive(Debug, PartialEq)]
 pub enum Command<'a> {
@@ -46,7 +49,7 @@ pub fn execute(cmd: Command) -> Status {
 fn execute_cd(target: Option<&str>) -> Status {
     if let Some(val) = target {
         if let Err(err) = std::env::set_current_dir(val) {
-            eprintln!("error: cd: {}", err);
+            eprintln!("error: {}", err);
             return Status::Continue;
         }
     } else {
@@ -85,17 +88,17 @@ fn execute_external_command(cmd: Vec<&str>) -> Status {
             } else if pid > 0 {
                 let mut result: c_int = 0;
                 if unsafe { waitpid(pid, &mut result, 0) } == -1 {
-                    eprintln!("error: waitpid: {}", std::io::Error::last_os_error());
+                    eprintln!("error: {}", std::io::Error::last_os_error());
                 } else {
                     let status = get_status(result);
                     match status {
-                        WaitStatus::Signaled(sig) => eprintln!("error: killed by signal {}", sig),
+                        WaitStatus::Signaled(sig) => eprintln!("rsh: killed by signal {}", sig),
                         WaitStatus::Stopped(_) => {}
                         WaitStatus::Exited(_) => {}
                     }
                 }
             } else {
-                eprintln!("erorr: fork: {}", std::io::Error::last_os_error());
+                eprintln!("error: {}", std::io::Error::last_os_error());
             }
         }
         Err(e) => {

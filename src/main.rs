@@ -1,5 +1,6 @@
 mod command;
 mod ffi;
+mod  wait;
 
 use std::{
     ffi::OsStr,
@@ -10,7 +11,7 @@ use crate::command::{Status, execute, parse_command};
 
 fn main() {
     loop {
-        let user = std::env::var("USER").unwrap_or(String::new());
+        let user = std::env::var("USER").unwrap_or_default();
         let current_dir = match std::env::current_dir() {
             Ok(val) => val
                 .file_name()
