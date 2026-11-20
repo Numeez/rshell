@@ -2,6 +2,7 @@ use std::ffi::c_int;
 
 const STATUS_MASK: c_int = 0x7F;
 const EXIT_CODE_MASK: c_int = 0xFF;
+const STOPPED: c_int = 0x7F;
 
 #[derive(PartialEq, Debug)]
 pub enum WaitStatus {
@@ -13,7 +14,7 @@ pub fn get_status(code: c_int) -> WaitStatus {
     let result_code = get_status_code(code);
     match result_code {
         0 => WaitStatus::Exited(get_exit_code(code)),
-        0x7F => WaitStatus::Stopped(get_exit_code(code)),
+        STOPPED => WaitStatus::Stopped(get_exit_code(code)),
         _ => WaitStatus::Signaled(result_code),
     }
 }

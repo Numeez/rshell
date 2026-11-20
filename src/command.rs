@@ -49,7 +49,7 @@ pub fn execute(cmd: Command) -> Status {
 fn execute_cd(target: Option<&str>) -> Status {
     if let Some(val) = target {
         if let Err(err) = std::env::set_current_dir(val) {
-            eprintln!("error: {}", err);
+            eprintln!("error: cd: {}", err);
             return Status::Continue;
         }
     } else {
@@ -88,7 +88,7 @@ fn execute_external_command(cmd: Vec<&str>) -> Status {
             } else if pid > 0 {
                 let mut result: c_int = 0;
                 if unsafe { waitpid(pid, &mut result, 0) } == -1 {
-                    eprintln!("error: {}", std::io::Error::last_os_error());
+                    eprintln!("error: rsh: {}", std::io::Error::last_os_error());
                 } else {
                     let status = get_status(result);
                     match status {
@@ -102,7 +102,7 @@ fn execute_external_command(cmd: Vec<&str>) -> Status {
             }
         }
         Err(e) => {
-            eprintln!("error: {}", e);
+            eprintln!("error: rsh: {}", e);
         }
     }
 

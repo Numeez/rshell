@@ -11,7 +11,7 @@ unsafe extern "C" {
     pub fn fork() -> pid_t;
     pub fn waitpid(pid: pid_t, stat_loc: *mut i32, options: i32) -> pid_t;
     pub fn execvp(file: *const c_char, argv: *const *const c_char) -> c_int;
-    pub fn _exit(status: i32) -> !;
+    pub fn _exit(status: c_int) -> !;
 }
 
 
