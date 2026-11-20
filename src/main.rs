@@ -1,6 +1,6 @@
 mod command;
 mod ffi;
-mod  wait;
+mod wait;
 
 use std::{
     ffi::OsStr,

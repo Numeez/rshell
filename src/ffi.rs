@@ -3,8 +3,6 @@ use std::ffi::{c_char, c_int};
 #[allow(non_camel_case_types)]
 type pid_t = i32;
 
-
-
 unsafe extern "C" {
     #[cfg(test)]
     pub fn getpid() -> pid_t;
@@ -13,7 +11,6 @@ unsafe extern "C" {
     pub fn execvp(file: *const c_char, argv: *const *const c_char) -> c_int;
     pub fn _exit(status: c_int) -> !;
 }
-
 
 #[cfg(test)]
 mod tests {
