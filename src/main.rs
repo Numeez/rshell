@@ -7,7 +7,14 @@ use crate::command::{Status, execute, parse_command};
 
 fn main() {
     loop {
-        print!("> ");
+        let user = std::env::var("USER").unwrap_or(String::new());
+        let current_dir: String = match std::env::current_dir() {
+            Ok(val) => val.to_string_lossy().to_string(),
+            Err(_) => String::new(),
+        };
+        let path = current_dir.split("/").last().unwrap_or("");
+        let start_icon = format!("{}@rsh {} $", user, path);
+        print!("{start_icon} ");
         let _ = stdout().flush();
         let mut line = String::new();
         match io::stdin().read_line(&mut line) {
@@ -26,9 +33,9 @@ fn main() {
             }
             Err(err) => {
                 if err.kind() == std::io::ErrorKind::InvalidData {
-                    eprintln!("error: {}", err.to_string());
+                    eprintln!("error: {}", err);
                 } else {
-                    eprintln!("error: {}", err.to_string());
+                    eprintln!("error: {}", err);
                     std::process::exit(1);
                 }
             }

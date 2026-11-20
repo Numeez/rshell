@@ -1,6 +1,6 @@
 use std::ffi::{CString, NulError, c_char, c_int};
 
-use crate::ffi::{_exit, execvp, fork, waitpid};
+use crate::ffi::{_exit, WaitStatus, execvp, fork, get_status, waitpid};
 
 #[derive(Debug, PartialEq)]
 pub enum Command<'a> {
@@ -21,13 +21,11 @@ pub fn parse_command(input: Vec<&str>) -> Option<Command<'_>> {
     }
     let command = input[0];
     match command.to_ascii_lowercase().as_str() {
-        "exit" => {
-            return Some(Command::Exit);
-        }
+        "exit" => Some(Command::Exit),
         "cd" => {
             let target = input.get(1);
             if let Some(val) = target {
-                return Some(Command::Cd(Some(val)));
+                Some(Command::Cd(Some(val)))
             } else {
                 Some(Command::Cd(None))
             }
@@ -52,9 +50,7 @@ fn execute_cd(target: Option<&str>) -> Status {
             return Status::Continue;
         }
         match std::env::current_dir() {
-            Ok(val) => {
-                println!("cd: {}", val.as_os_str().to_string_lossy());
-            }
+            Ok(_) => {}
             Err(e) => {
                 eprintln!("Error occured while cd: {}", e);
             }
@@ -62,7 +58,7 @@ fn execute_cd(target: Option<&str>) -> Status {
     } else {
         eprintln!("rsh: cd needs an argument");
     }
-    return Status::Continue;
+    Status::Continue
 }
 fn execute_help() -> Status {
     let help_message = concat!(
@@ -96,6 +92,13 @@ fn execute_external_command(cmd: Vec<&str>) -> Status {
                 let mut result: c_int = 0;
                 if unsafe { waitpid(pid, &mut result, 0) } == -1 {
                     eprintln!("rsh: waitpid: {}", std::io::Error::last_os_error());
+                } else {
+                    let status = get_status(result);
+                    match status {
+                        WaitStatus::Signaled(sig) => eprintln!("rsh: killed by signal {}", sig),
+                        WaitStatus::Stopped(_) => {}
+                        WaitStatus::Exited(_) => {}
+                    }
                 }
             } else {
                 eprintln!("rsh: fork: {}", std::io::Error::last_os_error());
