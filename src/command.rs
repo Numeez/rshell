@@ -88,7 +88,7 @@ fn execute_external_command(cmd: Vec<&str>) -> Status {
             } else if pid > 0 {
                 let mut result: c_int = 0;
                 if unsafe { waitpid(pid, &mut result, 0) } == -1 {
-                    eprintln!("error: rsh: {}", std::io::Error::last_os_error());
+                    eprintln!("error: waitpid: {}", std::io::Error::last_os_error());
                 } else {
                     let status = get_status(result);
                     match status {
@@ -98,7 +98,7 @@ fn execute_external_command(cmd: Vec<&str>) -> Status {
                     }
                 }
             } else {
-                eprintln!("error: {}", std::io::Error::last_os_error());
+                eprintln!("error: fork: {}", std::io::Error::last_os_error());
             }
         }
         Err(e) => {
