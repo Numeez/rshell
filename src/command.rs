@@ -46,17 +46,11 @@ pub fn execute(cmd: Command) -> Status {
 fn execute_cd(target: Option<&str>) -> Status {
     if let Some(val) = target {
         if let Err(err) = std::env::set_current_dir(val) {
-            eprintln!("Error occured while cd: {}", err);
+            eprintln!("error: cd: {}", err);
             return Status::Continue;
         }
-        match std::env::current_dir() {
-            Ok(_) => {}
-            Err(e) => {
-                eprintln!("Error occured while cd: {}", e);
-            }
-        }
     } else {
-        eprintln!("rsh: cd needs an argument");
+        eprintln!("error: rsh: cd needs an argument");
     }
     Status::Continue
 }
@@ -85,27 +79,27 @@ fn execute_external_command(cmd: Vec<&str>) -> Status {
             if pid == 0 {
                 let exec_result = unsafe { execvp(c_pointers[0], c_pointers.as_ptr()) };
                 if exec_result == -1 {
-                    eprintln!("rsh: {}: {}", cmd[0], std::io::Error::last_os_error());
+                    eprintln!("error: {}: {}", cmd[0], std::io::Error::last_os_error());
                 }
                 unsafe { _exit(1) };
             } else if pid > 0 {
                 let mut result: c_int = 0;
                 if unsafe { waitpid(pid, &mut result, 0) } == -1 {
-                    eprintln!("rsh: waitpid: {}", std::io::Error::last_os_error());
+                    eprintln!("error: waitpid: {}", std::io::Error::last_os_error());
                 } else {
                     let status = get_status(result);
                     match status {
-                        WaitStatus::Signaled(sig) => eprintln!("rsh: killed by signal {}", sig),
+                        WaitStatus::Signaled(sig) => eprintln!("error: killed by signal {}", sig),
                         WaitStatus::Stopped(_) => {}
                         WaitStatus::Exited(_) => {}
                     }
                 }
             } else {
-                eprintln!("rsh: fork: {}", std::io::Error::last_os_error());
+                eprintln!("erorr: fork: {}", std::io::Error::last_os_error());
             }
         }
         Err(e) => {
-            eprintln!("rsh: {}", e);
+            eprintln!("error: {}", e);
         }
     }
 

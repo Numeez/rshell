@@ -14,21 +14,11 @@ pub enum WaitStatus {
 }
 
 unsafe extern "C" {
+    #[cfg(test)]
     pub fn getpid() -> pid_t;
-}
-
-unsafe extern "C" {
     pub fn fork() -> pid_t;
-}
-
-unsafe extern "C" {
     pub fn waitpid(pid: pid_t, stat_loc: *mut i32, options: i32) -> pid_t;
-}
-
-unsafe extern "C" {
     pub fn execvp(file: *const c_char, argv: *const *const c_char) -> c_int;
-}
-unsafe extern "C" {
     pub fn _exit(status: i32) -> !;
 }
 

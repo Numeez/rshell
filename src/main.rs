@@ -1,19 +1,25 @@
 mod command;
 mod ffi;
 
-use std::io::{self, Write, stdout};
+use std::{
+    ffi::OsStr,
+    io::{self, Write, stdout},
+};
 
 use crate::command::{Status, execute, parse_command};
 
 fn main() {
     loop {
         let user = std::env::var("USER").unwrap_or(String::new());
-        let current_dir: String = match std::env::current_dir() {
-            Ok(val) => val.to_string_lossy().to_string(),
-            Err(_) => String::new(),
+        let current_dir = match std::env::current_dir() {
+            Ok(val) => val
+                .file_name()
+                .unwrap_or(OsStr::new("/"))
+                .to_string_lossy()
+                .to_string(),
+            Err(_) => String::from("?"),
         };
-        let path = current_dir.split("/").last().unwrap_or("");
-        let start_icon = format!("{}@rsh {} $", user, path);
+        let start_icon = format!("{}@rsh {} $", user, current_dir);
         print!("{start_icon} ");
         let _ = stdout().flush();
         let mut line = String::new();
