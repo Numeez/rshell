@@ -1,7 +1,10 @@
-use std::ffi::{CString, NulError, c_char, c_int};
+use std::{
+    ffi::{CString, NulError, c_char, c_int},
+    io::Error,
+};
 
 use crate::{
-    ffi::{_exit, execvp, fork, waitpid},
+    ffi::{_exit, close, dup2, execvp, fork, pid_t, pipe, waitpid},
     wait::{WaitStatus, get_status},
 };
 
@@ -10,31 +13,36 @@ pub enum Command<'a> {
     Exit,
     Cd(Option<&'a str>),
     Help,
-    External(Vec<&'a str>),
+    Pipeline(Vec<Vec<&'a str>>),
+    SyntaxError,
 }
 #[derive(Debug, PartialEq)]
 pub enum Status {
     Stop,
-    Continue,
+    Continue(c_int),
 }
 
 pub fn parse_command(input: Vec<&str>) -> Option<Command<'_>> {
     if input.is_empty() {
         return None;
     }
-    let command = input[0];
-    match command.to_ascii_lowercase().as_str() {
-        "exit" => Some(Command::Exit),
-        "cd" => {
-            let target = input.get(1);
-            if let Some(val) = target {
-                Some(Command::Cd(Some(val)))
-            } else {
-                Some(Command::Cd(None))
-            }
+    if input.contains(&"|") {
+        let stages: Vec<Vec<&str>> = input
+            .split(|word| *word == "|")
+            .map(|stage| stage.to_vec())
+            .collect();
+
+        if stages.iter().any(|stage| stage.is_empty()) {
+            return Some(Command::SyntaxError);
         }
+        return Some(Command::Pipeline(stages));
+    }
+
+    match input[0].to_ascii_lowercase().as_str() {
+        "exit" => Some(Command::Exit),
+        "cd" => Some(Command::Cd(input.get(1).copied())),
         "help" => Some(Command::Help),
-        _ => Some(Command::External(input)),
+        _ => Some(Command::Pipeline(vec![input])),
     }
 }
 
@@ -43,19 +51,25 @@ pub fn execute(cmd: Command) -> Status {
         Command::Exit => Status::Stop,
         Command::Cd(target) => execute_cd(target),
         Command::Help => execute_help(),
-        Command::External(val) => execute_external_command(val),
+        Command::Pipeline(stages) => execute_pipeline(stages),
+        Command::SyntaxError => {
+            eprintln!("error: syntax error near `|`");
+            Status::Continue(2)
+        }
     }
 }
 fn execute_cd(target: Option<&str>) -> Status {
+    let mut status: c_int = 0;
     if let Some(val) = target {
         if let Err(err) = std::env::set_current_dir(val) {
             eprintln!("error: cd: {}", err);
-            return Status::Continue;
+            return Status::Continue(1);
         }
     } else {
+        status = 1;
         eprintln!("error: cd: needs an argument");
     }
-    Status::Continue
+    Status::Continue(status)
 }
 fn execute_help() -> Status {
     let help_message = concat!(
@@ -70,43 +84,124 @@ fn execute_help() -> Status {
         "Use the man command for information on other programs.",
     );
     println!("{}", help_message);
-    Status::Continue
+    Status::Continue(0)
 }
 
-fn execute_external_command(cmd: Vec<&str>) -> Status {
-    let c_strings = to_c_strings(&cmd);
-    match c_strings {
-        Ok(val) => {
-            let c_pointers = to_argv(&val);
-            let pid = unsafe { fork() };
-            if pid == 0 {
-                let exec_result = unsafe { execvp(c_pointers[0], c_pointers.as_ptr()) };
-                if exec_result == -1 {
-                    eprintln!("error: {}: {}", cmd[0], std::io::Error::last_os_error());
-                }
-                unsafe { _exit(1) };
-            } else if pid > 0 {
-                let mut result: c_int = 0;
-                if unsafe { waitpid(pid, &mut result, 0) } == -1 {
-                    eprintln!("error: waitpid: {}", std::io::Error::last_os_error());
-                } else {
-                    let status = get_status(result);
-                    match status {
-                        WaitStatus::Signaled(sig) => eprintln!("rsh: killed by signal {}", sig),
-                        WaitStatus::Stopped(_) => {}
-                        WaitStatus::Exited(_) => {}
-                    }
-                }
-            } else {
-                eprintln!("error: fork: {}", std::io::Error::last_os_error());
+fn execute_pipeline(stages: Vec<Vec<&str>>) -> Status {
+    let mut c_strings = Vec::new();
+    for stage in &stages {
+        match to_c_strings(stage) {
+            Ok(strings) => c_strings.push(strings),
+            Err(e) => {
+                eprintln!("error: {}", e);
+                return Status::Continue(1);
             }
         }
-        Err(e) => {
-            eprintln!("error: {}", e);
+    }
+    let argvs: Vec<Vec<*const c_char>> = c_strings.iter().map(|s| to_argv(s)).collect();
+
+    let mut pids: Vec<pid_t> = Vec::new();
+    let mut prev_read: Option<c_int> = None;
+
+    for (i, argv) in argvs.iter().enumerate() {
+        let is_last = i == argvs.len() - 1;
+
+        // Every stage except the last writes into a new pipe.
+        let (next_read, write) = if is_last {
+            (None, None)
+        } else {
+            let mut fds: [c_int; 2] = [0, 0];
+            if unsafe { pipe(fds.as_mut_ptr()) } == -1 {
+                eprintln!("error: pipe: {}", Error::last_os_error());
+                close_fd(prev_read);
+                wait_all(&pids);
+                return Status::Continue(1);
+            }
+            (Some(fds[0]), Some(fds[1]))
+        };
+
+        let pid = spawn(argv, stages[i][0], prev_read, write, next_read);
+        close_fd(prev_read);
+        close_fd(write);
+
+        match pid {
+            Some(pid) => pids.push(pid),
+            None => {
+                close_fd(next_read);
+                wait_all(&pids);
+                return Status::Continue(1);
+            }
         }
+
+        prev_read = next_read;
     }
 
-    Status::Continue
+    let mut last_status = 0;
+    for pid in &pids {
+        last_status = wait_for(*pid);
+    }
+    Status::Continue(last_status)
+}
+
+fn spawn(
+    argv: &[*const c_char],
+    name: &str,
+    stdin_fd: Option<c_int>,
+    stdout_fd: Option<c_int>,
+    unused_fd: Option<c_int>,
+) -> Option<pid_t> {
+    let pid = unsafe { fork() };
+    if pid == -1 {
+        eprintln!("error: fork: {}", Error::last_os_error());
+        return None;
+    }
+    if pid == 0 {
+        unsafe {
+            if let Some(fd) = stdin_fd {
+                dup2(fd, 0);
+                close(fd);
+            }
+            if let Some(fd) = stdout_fd {
+                dup2(fd, 1);
+                close(fd);
+            }
+            if let Some(fd) = unused_fd {
+                close(fd);
+            }
+            execvp(argv[0], argv.as_ptr());
+            eprintln!("error: {}: {}", name, Error::last_os_error());
+            _exit(1);
+        }
+    }
+    Some(pid)
+}
+
+fn wait_for(pid: pid_t) -> c_int {
+    let mut raw: c_int = 0;
+    if unsafe { waitpid(pid, &mut raw, 0) } == -1 {
+        eprintln!("error: waitpid: {}", Error::last_os_error());
+        return 1;
+    }
+    match get_status(raw) {
+        WaitStatus::Exited(code) => code,
+        WaitStatus::Signaled(sig) => {
+            eprintln!("rsh: killed by signal {}", sig);
+            128 + sig
+        }
+        WaitStatus::Stopped(sig) => 128 + sig,
+    }
+}
+
+fn wait_all(pids: &[pid_t]) {
+    for pid in pids {
+        wait_for(*pid);
+    }
+}
+
+fn close_fd(fd: Option<c_int>) {
+    if let Some(fd) = fd {
+        unsafe { close(fd) };
+    }
 }
 
 fn to_c_strings(words: &[&str]) -> Result<Vec<CString>, NulError> {
@@ -173,17 +268,6 @@ mod tests {
         assert_eq!(Command::Help, parse_command(vec!["help", "tmp"]).unwrap())
     }
 
-    #[test]
-    fn test_external_command() {
-        assert_eq!(
-            Command::External(vec!["ls"]),
-            parse_command(vec!["ls"]).unwrap()
-        );
-        assert_eq!(
-            Command::External(vec!["ls", "-la"]),
-            parse_command(vec!["ls", "-la"]).unwrap()
-        );
-    }
     #[test]
     fn builds_null_terminated_argv() {
         let c_strings = to_c_strings(&["ls", "-la"]).unwrap();

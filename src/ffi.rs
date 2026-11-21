@@ -1,7 +1,7 @@
 use std::ffi::{c_char, c_int};
 
 #[allow(non_camel_case_types)]
-type pid_t = i32;
+pub type pid_t = i32;
 
 unsafe extern "C" {
     #[cfg(test)]
@@ -10,6 +10,9 @@ unsafe extern "C" {
     pub fn waitpid(pid: pid_t, stat_loc: *mut i32, options: i32) -> pid_t;
     pub fn execvp(file: *const c_char, argv: *const *const c_char) -> c_int;
     pub fn _exit(status: c_int) -> !;
+    pub fn pipe(fds: *mut c_int) -> c_int;
+    pub fn dup2(old_fd: c_int, new_fd: c_int) -> c_int;
+    pub fn close(fildes: c_int) -> c_int;
 }
 
 #[cfg(test)]

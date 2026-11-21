@@ -3,13 +3,14 @@ mod ffi;
 mod wait;
 
 use std::{
-    ffi::OsStr,
+    ffi::{OsStr, c_int},
     io::{self, Write, stdout},
 };
 
 use crate::command::{Status, execute, parse_command};
 
 fn main() {
+    let mut status_code: c_int = 0;
     loop {
         let user = std::env::var("USER").unwrap_or_default();
         let current_dir = match std::env::current_dir() {
@@ -30,11 +31,19 @@ fn main() {
                     println!();
                     break;
                 }
-                let values = split_words(&line);
+                let status_text = status_code.to_string();
+                let mut values = split_words(&line);
+                for word in values.iter_mut() {
+                    if *word == "$?" {
+                        *word = &status_text;
+                    }
+                }
                 if let Some(cmd) = parse_command(values) {
                     match execute(cmd) {
                         Status::Stop => break,
-                        Status::Continue => {}
+                        Status::Continue(val) => {
+                            status_code = val;
+                        }
                     }
                 }
             }
@@ -48,7 +57,7 @@ fn main() {
             }
         }
     }
-    std::process::exit(0);
+    std::process::exit(status_code);
 }
 
 fn split_words(line: &str) -> Vec<&str> {
