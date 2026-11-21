@@ -21,7 +21,10 @@ fn main() {
                 .to_string(),
             Err(_) => String::from("?"),
         };
-        let start_icon = format!("{}@rsh {} $", user, current_dir);
+        let start_icon = format!(
+            "\x1b[1;32m{}@rsh\x1b[0m \x1b[34m{}\x1b[0m $",
+            user, current_dir
+        );
         print!("{start_icon} ");
         let _ = stdout().flush();
         let mut line = String::new();
